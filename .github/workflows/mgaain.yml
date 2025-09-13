@@ -1,0 +1,45 @@
+# Variabile configurabile
+$authKey = "<AUTH_KEY_TAILSCALE>"  # Cheia Tailscale cu expirare 6 ore generată în consola Tailscale
+$newUser = "rdpuser"
+$password = [System.Web.Security.Membership]::GeneratePassword(12,3)
+
+# Instalează Tailscale
+Write-Host "Instalare Tailscale..."
+Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-ipn-setup.exe" -OutFile "$env:TEMP\tailscale-setup.exe"
+Start-Process "$env:TEMP\tailscale-setup.exe" -ArgumentList "/quiet" -Wait
+
+# Porneste Tailscale cu auth key
+Write-Host "Pornire Tailscale cu auth key..."
+& "C:\Program Files\Tailscale IPN\tailscale.exe" up --authkey=$authKey --accept-routes
+
+# Activează Remote Desktop
+Write-Host "Activare Remote Desktop..."
+Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
+
+# Configurează firewall-ul să permită doar subnetul Tailscale pentru RDP
+Write-Host "Configurare firewall pentru RDP..."
+# Reguli pentru TCP și UDP port 3389 pentru subnetul Tailscale 100.64.0.0/10
+New-NetFirewallRule -DisplayName "Allow RDP TCP from Tailscale subnet" -Direction Inbound -Protocol TCP -LocalPort 3389 -RemoteAddress 100.64.0.0/10 -Action Allow -Profile Any
+New-NetFirewallRule -DisplayName "Allow RDP UDP from Tailscale subnet" -Direction Inbound -Protocol UDP -LocalPort 3389 -RemoteAddress 100.64.0.0/10 -Action Allow -Profile Any
+
+# Creează utilizator nou pentru RDP
+Write-Host "Creare utilizator RDP..."
+New-LocalUser -Name $newUser -Password (ConvertTo-SecureString $password -AsPlainText -Force) -FullName "Utilizator RDP Tailscale" -Description "User creat pentru acces RDP cu Tailscale"
+Add-LocalGroupMember -Group "Remote Desktop Users" -Member $newUser
+
+# Afișează datele de acces
+$tailscaleIp = (& "C:\Program Files\Tailscale IPN\tailscale.exe" ip -4) -join ","
+Write-Host "Detalii acces RDP:"
+Write-Host "IP Tailscale: $tailscaleIp"
+Write-Host "User: $newUser"
+Write-Host "Parola: $password"
+
+# La 6 ore oprește Tailscale
+Write-Host "Programare oprire Tailscale după 6 ore..."
+Start-Job -ScriptBlock {
+    Start-Sleep -Seconds 21600
+    Stop-Process -Name tailscale -ErrorAction SilentlyContinue
+    Write-Host "Tailscale oprit după 6 ore."
+}
+
+Write-Host "Workflow complet. Poți acum accesa serverul prin RDP folosind IP-ul și credențialele afișate."
