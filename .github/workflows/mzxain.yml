@@ -1,0 +1,25 @@
+name: Tailscale Connect and Run Commands
+
+on:
+  workflow_dispatch:
+
+jobs:
+  connect-vm:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Setup Tailscale with Auth Key
+      uses: tailscale/github-action@v3
+      with:
+        authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
+
+    - name: Run remote commands on VM via Tailscale IP
+      run: |
+        VM_IP=$(tailscale ip -4)
+        echo "VM IP in tailnet: $VM_IP"
+
+        # Exemplu conectare remote PowerShell folosind Tailscale IP și credentiale configurate manual în VM
+        # pwsh -Command "Enter-PSSession -ComputerName $VM_IP -Credential (Get-Credential)"
+
+        echo "Aici poți adăuga comenzi pentru interacțiune cu VM-ul Windows 11"
+        
