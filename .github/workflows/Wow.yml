@@ -1,0 +1,57 @@
+name: Start Windows Server RDP with Tailscale
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup-rdp:
+    runs-on: windows-latest
+
+    steps:
+    - name: Download and install Tailscale
+      run: |
+        Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-ipn-setup.exe" -OutFile "$env:TEMP\tailscale-setup.exe"
+        Start-Process -FilePath "$env:TEMP\tailscale-setup.exe" -ArgumentList "/quiet" -Wait
+
+    - name: Connect Tailscale with auth key
+      run: |
+        tailscale up --authkey $env.TAILSCALE_AUTHKEY --accept-routes
+
+    - name: Enable Remote Desktop and configure firewall
+      run: |
+        Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
+        New-NetFirewallRule -DisplayName "Allow RDP TCP from Tailscale subnet" -Direction Inbound -Protocol TCP -LocalPort 3389 -RemoteAddress 100.64.0.0/10 -Action Allow
+        New-NetFirewallRule -DisplayName "Allow RDP UDP from Tailscale subnet" -Direction Inbound -Protocol UDP -LocalPort 3389 -RemoteAddress 100.64.0.0/10 -Action Allow
+
+    - id: create-user
+      name: Create RDP User
+      shell: powershell
+      run: |
+        $password = [System.Web.Security.Membership]::GeneratePassword(12,3)
+        net user rdpuser $password /add
+        net localgroup "Remote Desktop Users" rdpuser /add
+        Write-Output "::set-output name=user::rdpuser"
+        Write-Output "::set-output name=pass::$password"
+
+    - id: get-ip
+      name: Get Tailscale IP
+      shell: powershell
+      run: |
+        $ip = tailscale ip -4
+        Write-Output "::set-output name=ip::$ip"
+
+    - name: Show access details
+      run: |
+        echo "Tailscale IP: ${{ steps.get-ip.outputs.ip }}"
+        echo "User: ${{ steps.create-user.outputs.user }}"
+        echo "Password: ${{ steps.create-user.outputs.pass }}"
+
+    - name: Stop Tailscale after 6 hours (simulated)
+      run: |
+        Start-Sleep -Seconds 21600
+        Stop-Process -Name tailscale
+      continue-on-error: true
+
+env:
+  TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+  
