@@ -1,0 +1,54 @@
+name: Create Paperspace VM with Tailscale
+
+on:
+  workflow_dispatch:
+
+jobs:
+  create-vm-and-connect:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Create Paperspace Machine via API
+      id: create_vm
+      run: |
+        response=$(curl -X POST "https://api.paperspace.com/v1/machines" \
+          -H "Content-Type: application/json" \
+          -H "Authorization: Bearer ${{ secrets.PAPERSPACE_API_KEY }}" \
+          -d '{
+            "name": "paperspace-rtx4000",
+            "machineType": "p4000",      # Ajustează corect
+            "templateId": "txxxxxxx",    # ID OS template Windows 11 sau Ubuntu
+            "diskSize": 756,
+            "region": "NY2"
+          }')
+        echo "response=$response" >> $GITHUB_OUTPUT
+        # Extrage în mod concret ID-ul maşinii din răspuns dacă doreşti
+
+    - name: Wait for machine to be ready (max 6 hours)
+      run: |
+        # Poţi implementa polling-ul aici să aştepţi până porneşte VM-ul
+
+    - name: Connect to Tailscale with auth key and custom hostname
+      uses: tailscale/github-action@v3
+      with:
+        authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
+        hostname: paperspace1
+
+    - id: generate-creds
+      name: Generate user and password
+      run: |
+        USER=ciuser
+        PASSWORD=$(openssl rand -base64 12)
+        echo "::set-output name=user::$USER"
+        echo "::set-output name=password::$PASSWORD"
+
+    - id: get-ip
+      name: Get Tailscale IP
+      run: echo "::set-output name=ip::$(tailscale ip -4)"
+
+    - name: Display connection info
+      run: |
+        echo "IP Tailscale: ${{ steps.get-ip.outputs.ip }}"
+        echo "User: ${{ steps.generate-creds.outputs.user }}"
+        echo "Password: ${{ steps.generate-creds.outputs.password }}"
+        
