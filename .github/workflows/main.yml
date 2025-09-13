@@ -1,0 +1,35 @@
+name: Tailscale Connect with User and IP Display
+
+on:
+  workflow_dispatch:
+
+jobs:
+  tailscale-setup:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    - name: Connect to Tailscale using auth key
+      uses: tailscale/github-action@v3
+      with:
+        authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
+
+    - name: Display User and Tailscale IP
+      shell: pwsh
+      run: |
+        $tailscaleExe = "C:\Program Files (x86)\Tailscale IPN\tailscale.exe"
+        $status = & $tailscaleExe status | Out-String
+        $ipLine = $status -split "`n" | Where-Object { $_ -match '100\.' } | Select-Object -First 1
+        if ($ipLine) {
+          $ip = ($ipLine -split '\s+')[0]
+        } else {
+          $ip = "IP not found"
+        }
+        $user = $env:USERNAME
+        Write-Host "---- Connection info ----"
+        Write-Host "User: $user"
+        Write-Host "Tailscale IP: $ip"
+        Write-Host "-------------------------"
+        
