@@ -1,0 +1,74 @@
+name: Create and run Paperspace VM with Tailscale
+
+on:
+  workflow_dispatch:
+
+jobs:
+  create-paperspace-vm:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Create Paperspace VM via API
+      id: create_vm
+      run: |
+        response=$(curl -X POST "https://api.paperspace.com/v1/machines" \
+          -H "Content-Type: application/json" \
+          -H "Authorization: Bearer ${{ secrets.PAPERSPACE_API_KEY }}" \
+          -d '{
+            "name": "paperspace1",
+            "machineType": "p4000",               # Corectează tipul de mașină
+            "templateId": "tx-templatewindows11", # ID template Windows 11 real
+            "diskSize": 756,
+            "region": "NY2",
+            "email": "ciuser@example.com",        # Email user creat
+            "password": "YourStrongPassw0rd"      # Parolă generată tu/aleator
+          }')
+        echo "response=$response" >> $GITHUB_OUTPUT
+        # Extrage ID mașină și alte date dacă e nevoie
+
+    - name: Wait for VM to become active (polling exemplu simplificat)
+      run: |
+        VM_ID=$(echo "${{ steps.create_vm.outputs.response }}" | jq -r '.id')
+        STATUS="provisioning"
+        for i in {1..72}; do              # 6 ore 3600s / 300s polling
+          STATUS=$(curl -s -H "Authorization: Bearer ${{ secrets.PAPERSPACE_API_KEY }}" \
+            "https://api.paperspace.com/v1/machines/$VM_ID" | jq -r '.state')
+          echo "Current VM status: $STATUS"
+          if [ "$STATUS" == "ready" ]; then
+            break
+          fi
+          sleep 300
+        done
+
+    - name: Connect tailscale with auth key
+      uses: tailscale/github-action@v3
+      with:
+        authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
+        hostname: paperspace1
+
+    - id: generate-creds
+      name: Generate user and password outputs
+      run: |
+        USER="ciuser@example.com"
+        PASSWORD="YourStrongPassw0rd"
+        echo "::set-output name=user::$USER"
+        echo "::set-output name=password::$PASSWORD"
+
+    - id: get-ip
+      name: Get Tailscale IP address
+      run: |
+        IP=$(tailscale ip -4)
+        echo "::set-output name=ip::$IP"
+
+    - name: Show connection info in logs
+      run: |
+        echo "Tailscale IP: ${{ steps.get-ip.outputs.ip }}"
+        echo "User: ${{ steps.generate-creds.outputs.user }}"
+        echo "Password: ${{ steps.generate-creds.outputs.password }}"
+
+    - name: Keep workflow running for 6 hours
+      run: sleep 21600
+
+    - name: Workflow complete
+      run: echo "Workflow finished after 6 hours"
+      
