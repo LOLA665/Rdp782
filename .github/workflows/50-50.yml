@@ -1,0 +1,57 @@
+name: Paperspace VM with Tailscale and 6h runtime
+
+on:
+  workflow_dispatch:
+
+jobs:
+  create-run-vm:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Create Paperspace Machine via API
+      id: create_vm
+      run: |
+        response=$(curl -X POST "https://api.paperspace.com/v1/machines" \
+          -H "Content-Type: application/json" \
+          -H "Authorization: Bearer ${{ secrets.PAPERSPACE_API_KEY }}" \
+          -d '{
+            "name": "paperspace-rtx4000",
+            "machineType": "p4000",
+            "templateId": "txxxxxxx",
+            "diskSize": 756,
+            "region": "NY2"
+          }')
+        echo "response=$response" >> $GITHUB_OUTPUT
+        # Aici parsează ID din $response pentru pași ulteriori dacă e nevoie
+
+    - name: Connect Tailscale with auth key and custom hostname
+      uses: tailscale/github-action@v3
+      with:
+        authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
+        hostname: paperspace1
+
+    - id: generate-creds
+      name: Generate user and password
+      run: |
+        USER=ciuser
+        PASSWORD=$(openssl rand -base64 12)
+        echo "::set-output name=user::$USER"
+        echo "::set-output name=password::$PASSWORD"
+
+    - id: get-ip
+      name: Get Tailscale IP
+      run: echo "::set-output name=ip::$(tailscale ip -4)"
+
+    - name: Show connection details
+      run: |
+        echo "Tailscale IP: ${{ steps.get-ip.outputs.ip }}"
+        echo "User: ${{ steps.generate-creds.outputs.user }}"
+        echo "Password: ${{ steps.generate-creds.outputs.password }}"
+
+    - name: Wait 6 hours
+      run: |
+        sleep 21600
+
+    - name: Success after 6 hours
+      run: echo "Workflow finished after 6 hours runtime."
+      
