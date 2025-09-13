@@ -1,0 +1,56 @@
+name: Configure Windows Server RDP with Tailscale
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup-rdp:
+    runs-on: windows-latest
+
+    steps:
+    - name: Setup Tailscale
+      uses: tailscale/github-action@v3
+      with:
+        authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+
+    - name: Enable Remote Desktop and configure firewall
+      shell: powershell
+      run: |
+        Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
+        New-NetFirewallRule -DisplayName "Allow RDP TCP from Tailscale subnet" -Direction Inbound -Protocol TCP -LocalPort 3389 -RemoteAddress 100.64.0.0/10 -Action Allow
+        New-NetFirewallRule -DisplayName "Allow RDP UDP from Tailscale subnet" -Direction Inbound -Protocol UDP -LocalPort 3389 -RemoteAddress 100.64.0.0/10 -Action Allow
+
+    - id: create-user
+      name: Create RDP user
+      shell: powershell
+      run: |
+        $password = [System.Web.Security.Membership]::GeneratePassword(12, 3)
+        net user rdpuser $password /add
+        net localgroup "Remote Desktop Users" rdpuser /add
+        echo "::set-output name=user::rdpuser"
+        echo "::set-output name=pass::$password"
+
+    - id: get-ip
+      name: Get Tailscale IP
+      shell: powershell
+      run: |
+        $ip = tailscale ip -4
+        echo "::set-output name=ip::$ip"
+
+    - name: Show connection info
+      shell: powershell
+      run: |
+        Write-Host "Tailscale IP: ${{ steps.get-ip.outputs.ip }}"
+        Write-Host "User: ${{ steps.create-user.outputs.user }}"
+        Write-Host "Password: ${{ steps.create-user.outputs.pass }}"
+
+    - name: Stop Tailscale after 6 hours (simulate)
+      shell: powershell
+      run: |
+        Start-Sleep -Seconds 21600
+        taskkill /IM tailscale.exe /F
+      continue-on-error: true
+
+env:
+  TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+  
